@@ -142,6 +142,6 @@
         <source-file src="src/android/Library/res/values-ko/multiimagechooser_strings_ko.xml" target-dir="res/values-ko"/>
 
         <framework src="src/android/ignorelinterrors.gradle" custom="true" type="gradleReference"/>
-        <framework src="src/android/androidtarget.gradle" custom="true" type="gradleReference"/>
+        <!--         <framework src="src/android/androidtarget.gradle" custom="true" type="gradleReference"/> -->
     </platform>
 </plugin>
