@@ -20,8 +20,10 @@ import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.os.Build;
 import android.os.Bundle;
-import android.support.v4.app.ActivityCompat;
-import android.support.v4.content.ContextCompat;
+
+import androidx.core.app.ActivityCompat;
+//import android.support.v4.app.ActivityCompat;
+//import android.support.v4.content.ContextCompat;
 
 public class ImagePicker extends CordovaPlugin {
 
@@ -37,7 +39,6 @@ public class ImagePicker extends CordovaPlugin {
 
     public boolean execute(String action, final JSONArray args, final CallbackContext callbackContext) throws JSONException {
         this.callbackContext = callbackContext;
-
         if (ACTION_HAS_READ_PERMISSION.equals(action)) {
             callbackContext.sendPluginResult(new PluginResult(PluginResult.Status.OK, hasReadPermission()));
             return true;
@@ -146,9 +147,9 @@ public class ImagePicker extends CordovaPlugin {
         if (resultCode == Activity.RESULT_OK && data != null) {
             int sync = data.getIntExtra("bigdata:synccode", -1);
             final Bundle bigData = ResultIPC.get().getLargeData(sync);
-      
+
             ArrayList<String> fileNames = bigData.getStringArrayList("MULTIPLEFILENAMES");
-    
+
             JSONArray res = new JSONArray(fileNames);
             callbackContext.success(res);
 
