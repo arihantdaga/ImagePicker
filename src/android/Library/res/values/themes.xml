@@ -1,4 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<config-file target="res/values/themes.xml" parent="/resources">
-        <style name="MyTheme" parent="android:Theme.Holo.Light"></style>
-</config-file>
+<resources>
+    <style name="MyTheme" parent="android:Theme.Holo.Light">
+    </style>
+</resources>
