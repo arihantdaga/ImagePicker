@@ -24,6 +24,8 @@ import android.os.Bundle;
 import androidx.core.app.ActivityCompat;
 //import android.support.v4.app.ActivityCompat;
 //import android.support.v4.content.ContextCompat;
+import androidx.core.app.ActivityCompat;
+import androidx.core.content.ContextCompat;
 
 public class ImagePicker extends CordovaPlugin {
 
@@ -107,7 +109,13 @@ public class ImagePicker extends CordovaPlugin {
 
     @SuppressLint("InlinedApi")
     private boolean hasReadPermission() {
-        return cordova!=null && cordova.hasPermission(Manifest.permission.READ_EXTERNAL_STORAGE);
+         String readImagePermission = Manifest.permission.READ_EXTERNAL_STORAGE;
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            readImagePermission = Manifest.permission.READ_MEDIA_IMAGES;
+        }
+        return PackageManager.PERMISSION_GRANTED == ContextCompat.checkSelfPermission(this.cordova.getActivity(), readImagePermission);
+
+        // return cordova!=null && cordova.hasPermission(Manifest.permission.READ_EXTERNAL_STORAGE);
 
 //        return Build.VERSION.SDK_INT < 23 ||
 //            PackageManager.PERMISSION_GRANTED == ContextCompat.checkSelfPermission(this.cordova.getActivity(), Manifest.permission.READ_EXTERNAL_STORAGE);
@@ -126,21 +134,33 @@ public class ImagePicker extends CordovaPlugin {
 //                PERMISSION_REQUEST_CODE,
 //                Manifest.permission.READ_EXTERNAL_STORAGE
 //        );
-        if(ActivityCompat.shouldShowRequestPermissionRationale(this.cordova.getActivity(),
-        Manifest.permission.READ_EXTERNAL_STORAGE)){
+        String readImagePermission = Manifest.permission.READ_EXTERNAL_STORAGE;
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            readImagePermission = Manifest.permission.READ_MEDIA_IMAGES;
+        }
+
+        if (!hasReadPermission()) {
             ActivityCompat.requestPermissions(
                 this.cordova.getActivity(),
-                new String[] {Manifest.permission.READ_EXTERNAL_STORAGE},
-                PERMISSION_REQUEST_CODE);
-        }else{
-            ActivityCompat.requestPermissions(
-                this.cordova.getActivity(),
-                new String[] {Manifest.permission.READ_EXTERNAL_STORAGE},
+                new String[] { readImagePermission },
                 PERMISSION_REQUEST_CODE);
         }
+
+        // if(ActivityCompat.shouldShowRequestPermissionRationale(this.cordova.getActivity(),
+        // Manifest.permission.READ_EXTERNAL_STORAGE)){
+        //     ActivityCompat.requestPermissions(
+        //         this.cordova.getActivity(),
+        //         new String[] {Manifest.permission.READ_EXTERNAL_STORAGE},
+        //         PERMISSION_REQUEST_CODE);
+        // }else{
+        //     ActivityCompat.requestPermissions(
+        //         this.cordova.getActivity(),
+        //         new String[] {Manifest.permission.READ_EXTERNAL_STORAGE},
+        //         PERMISSION_REQUEST_CODE);
+        // }
         // This method executes async and we seem to have no known way to receive the result
         // (that's why these methods were later added to Cordova), so simply returning ok now.
-//        callbackContext.success();
+        callbackContext.success();
     }
 
     public void onActivityResult(int requestCode, int resultCode, Intent data) {
