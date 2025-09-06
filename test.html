@@ -1,0 +1,389 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Enhanced ImagePicker Test</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #333;
+            border-bottom: 2px solid #007bff;
+            padding-bottom: 10px;
+        }
+        .button-group {
+            margin: 20px 0;
+        }
+        button {
+            background: #007bff;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 4px;
+            font-size: 16px;
+            cursor: pointer;
+            margin-right: 10px;
+            margin-bottom: 10px;
+        }
+        button:hover {
+            background: #0056b3;
+        }
+        button:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+        }
+        .images-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+            gap: 15px;
+            margin-top: 20px;
+        }
+        .image-card {
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            overflow: hidden;
+            background: white;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+        }
+        .image-card img {
+            width: 100%;
+            height: 200px;
+            object-fit: cover;
+            cursor: pointer;
+        }
+        .image-info {
+            padding: 10px;
+            font-size: 12px;
+            color: #666;
+        }
+        .image-info div {
+            margin: 2px 0;
+        }
+        #output {
+            background: #f8f9fa;
+            border: 1px solid #dee2e6;
+            border-radius: 4px;
+            padding: 15px;
+            margin-top: 20px;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+            font-family: 'Courier New', monospace;
+            font-size: 12px;
+            max-height: 300px;
+            overflow-y: auto;
+        }
+        .stats {
+            background: #e8f4fd;
+            border: 1px solid #bee5eb;
+            border-radius: 4px;
+            padding: 15px;
+            margin: 20px 0;
+        }
+        .modal {
+            display: none;
+            position: fixed;
+            z-index: 1000;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0,0,0,0.9);
+        }
+        .modal-content {
+            margin: auto;
+            display: block;
+            max-width: 90%;
+            max-height: 90%;
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+        }
+        .close {
+            position: absolute;
+            top: 15px;
+            right: 35px;
+            color: #f1f1f1;
+            font-size: 40px;
+            font-weight: bold;
+            cursor: pointer;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Enhanced ImagePicker Plugin Test</h1>
+        
+        <div class="button-group">
+            <button onclick="testEnhancedMode()">Test Enhanced Mode (Default)</button>
+            <button onclick="testLegacyMode()">Test Legacy Mode</button>
+            <button onclick="testCustomThumbnails()">Test Custom Thumbnails (300x300)</button>
+            <button onclick="testBase64Output()">Test Base64 Output</button>
+            <button onclick="clearResults()">Clear Results</button>
+        </div>
+        
+        <div class="stats" id="stats" style="display:none;">
+            <h3>Performance Stats</h3>
+            <div id="statsContent"></div>
+        </div>
+        
+        <div class="images-grid" id="imagesGrid"></div>
+        
+        <div id="output"></div>
+    </div>
+    
+    <div id="imageModal" class="modal">
+        <span class="close" onclick="closeModal()">&times;</span>
+        <img class="modal-content" id="modalImage">
+    </div>
+    
+    <script type="text/javascript">
+        let startTime;
+        
+        function log(message) {
+            const output = document.getElementById('output');
+            const timestamp = new Date().toLocaleTimeString();
+            output.textContent += `[${timestamp}] ${message}\n`;
+            output.scrollTop = output.scrollHeight;
+            console.log(message);
+        }
+        
+        function formatBytes(bytes) {
+            if (bytes === 0) return '0 Bytes';
+            const k = 1024;
+            const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+            const i = Math.floor(Math.log(bytes) / Math.log(k));
+            return Math.round(bytes / Math.pow(k, i) * 100) / 100 + ' ' + sizes[i];
+        }
+        
+        function showStats(results, duration) {
+            const stats = document.getElementById('stats');
+            const statsContent = document.getElementById('statsContent');
+            
+            let totalSize = 0;
+            let totalThumbnailSize = 0;
+            
+            results.forEach(image => {
+                if (image.fileSize) totalSize += image.fileSize;
+                if (image.thumbnail) {
+                    // Estimate thumbnail size from base64
+                    totalThumbnailSize += image.thumbnail.length * 0.75;
+                }
+            });
+            
+            statsContent.innerHTML = `
+                <div>Selection Time: ${duration}ms</div>
+                <div>Images Selected: ${results.length}</div>
+                <div>Total Original Size: ${formatBytes(totalSize)}</div>
+                <div>Total Thumbnail Size: ${formatBytes(totalThumbnailSize)}</div>
+                <div>Size Reduction: ${Math.round((1 - totalThumbnailSize/totalSize) * 100)}%</div>
+            `;
+            
+            stats.style.display = 'block';
+        }
+        
+        function displayResults(results, mode) {
+            const grid = document.getElementById('imagesGrid');
+            grid.innerHTML = '';
+            
+            if (mode === 'enhanced') {
+                results.forEach((image, index) => {
+                    const card = document.createElement('div');
+                    card.className = 'image-card';
+                    
+                    const img = document.createElement('img');
+                    img.src = image.thumbnail || image.originalPath;
+                    img.onclick = () => showFullImage(image.originalPath);
+                    
+                    const info = document.createElement('div');
+                    info.className = 'image-info';
+                    info.innerHTML = `
+                        <div><strong>${image.fileName || 'Image ' + (index + 1)}</strong></div>
+                        <div>Size: ${image.width}x${image.height}</div>
+                        <div>File: ${formatBytes(image.fileSize || 0)}</div>
+                        <div>Type: ${image.mimeType || 'image/jpeg'}</div>
+                    `;
+                    
+                    card.appendChild(img);
+                    card.appendChild(info);
+                    grid.appendChild(card);
+                });
+            } else {
+                results.forEach((path, index) => {
+                    const card = document.createElement('div');
+                    card.className = 'image-card';
+                    
+                    const img = document.createElement('img');
+                    img.src = path;
+                    img.onclick = () => showFullImage(path);
+                    
+                    const info = document.createElement('div');
+                    info.className = 'image-info';
+                    info.innerHTML = `<div><strong>Image ${index + 1}</strong></div>`;
+                    
+                    card.appendChild(img);
+                    card.appendChild(info);
+                    grid.appendChild(card);
+                });
+            }
+        }
+        
+        function showFullImage(path) {
+            const modal = document.getElementById('imageModal');
+            const modalImg = document.getElementById('modalImage');
+            modal.style.display = 'block';
+            modalImg.src = path;
+        }
+        
+        function closeModal() {
+            document.getElementById('imageModal').style.display = 'none';
+        }
+        
+        function testEnhancedMode() {
+            log('Testing Enhanced Mode (with thumbnails and metadata)...');
+            startTime = Date.now();
+            
+            window.imagePicker.getPictures(
+                function(results) {
+                    const duration = Date.now() - startTime;
+                    log(`Success! Selected ${results.length} images in ${duration}ms`);
+                    
+                    if (results.length > 0) {
+                        log('First image details:');
+                        const first = results[0];
+                        log(`  - Path: ${first.originalPath}`);
+                        log(`  - File: ${first.fileName}`);
+                        log(`  - Size: ${first.width}x${first.height}`);
+                        log(`  - File Size: ${formatBytes(first.fileSize)}`);
+                        log(`  - Has Thumbnail: ${!!first.thumbnail}`);
+                        
+                        displayResults(results, 'enhanced');
+                        showStats(results, duration);
+                    }
+                },
+                function(error) {
+                    log('Error: ' + error);
+                },
+                {
+                    maximumImagesCount: 10,
+                    width: 1200,
+                    height: 1200,
+                    quality: 80,
+                    includeThumbnail: true,
+                    thumbnailWidth: 200,
+                    thumbnailHeight: 200
+                }
+            );
+        }
+        
+        function testLegacyMode() {
+            log('Testing Legacy Mode (simple paths, no thumbnails)...');
+            startTime = Date.now();
+            
+            window.imagePicker.getPictures(
+                function(results) {
+                    const duration = Date.now() - startTime;
+                    log(`Success! Selected ${results.length} images in ${duration}ms`);
+                    
+                    if (results.length > 0) {
+                        log('First image path: ' + results[0]);
+                        displayResults(results, 'legacy');
+                    }
+                },
+                function(error) {
+                    log('Error: ' + error);
+                },
+                {
+                    maximumImagesCount: 10,
+                    includeThumbnail: false
+                }
+            );
+        }
+        
+        function testCustomThumbnails() {
+            log('Testing Custom Thumbnail Size (300x300)...');
+            startTime = Date.now();
+            
+            window.imagePicker.getPictures(
+                function(results) {
+                    const duration = Date.now() - startTime;
+                    log(`Success! Selected ${results.length} images in ${duration}ms`);
+                    
+                    if (results.length > 0 && results[0].thumbnailWidth) {
+                        log(`Thumbnail size: ${results[0].thumbnailWidth}x${results[0].thumbnailHeight}`);
+                        displayResults(results, 'enhanced');
+                        showStats(results, duration);
+                    }
+                },
+                function(error) {
+                    log('Error: ' + error);
+                },
+                {
+                    maximumImagesCount: 5,
+                    includeThumbnail: true,
+                    thumbnailWidth: 300,
+                    thumbnailHeight: 300
+                }
+            );
+        }
+        
+        function testBase64Output() {
+            log('Testing Base64 Output Mode...');
+            startTime = Date.now();
+            
+            window.imagePicker.getPictures(
+                function(results) {
+                    const duration = Date.now() - startTime;
+                    log(`Success! Selected ${results.length} images in ${duration}ms`);
+                    
+                    if (results.length > 0) {
+                        const first = results[0];
+                        log('First image is base64: ' + first.originalPath.startsWith('data:'));
+                        displayResults(results, 'enhanced');
+                        showStats(results, duration);
+                    }
+                },
+                function(error) {
+                    log('Error: ' + error);
+                },
+                {
+                    maximumImagesCount: 3,
+                    outputType: window.imagePicker.OutputType.BASE64_STRING,
+                    includeThumbnail: true
+                }
+            );
+        }
+        
+        function clearResults() {
+            document.getElementById('imagesGrid').innerHTML = '';
+            document.getElementById('output').textContent = '';
+            document.getElementById('stats').style.display = 'none';
+            log('Results cleared');
+        }
+        
+        // Check if plugin is loaded
+        document.addEventListener('deviceready', function() {
+            log('Device ready! ImagePicker plugin loaded.');
+            log('Plugin version: 3.0.0 (Enhanced)');
+        }, false);
+        
+        // For browser testing
+        if (!window.cordova) {
+            log('Running in browser - Cordova not available');
+            log('Add this file to your Cordova app for testing');
+        }
+    </script>
+</body>
+</html>

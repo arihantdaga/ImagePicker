@@ -16,6 +16,7 @@ import android.util.Log;
 
 import org.json.JSONArray;
 import org.json.JSONException;
+import org.json.JSONObject;
 
 import java.io.ByteArrayOutputStream;
 import java.io.File;
@@ -57,6 +58,25 @@ public class PhotoPickerUtils {
     }
     
     /**
+     * Process a list of image URIs with enhanced metadata and thumbnail support
+     */
+    public JSONArray processImagesWithThumbnails(List<Uri> uris, int desiredWidth, int desiredHeight, 
+                                                 int quality, int outputType, boolean includeThumbnail,
+                                                 int thumbnailWidth, int thumbnailHeight) throws JSONException {
+        JSONArray results = new JSONArray();
+        
+        for (Uri uri : uris) {
+            JSONObject result = processImageWithThumbnail(uri, desiredWidth, desiredHeight, quality, 
+                                                         outputType, includeThumbnail, thumbnailWidth, thumbnailHeight);
+            if (result != null) {
+                results.put(result);
+            }
+        }
+        
+        return results;
+    }
+    
+    /**
      * Process a single image URI
      */
     private String processImage(Uri uri, int desiredWidth, int desiredHeight, 
@@ -88,6 +108,120 @@ public class PhotoPickerUtils {
             Log.e(TAG, "Error processing image: " + uri, e);
             return null;
         }
+    }
+    
+    /**
+     * Process a single image URI with enhanced metadata and thumbnail support
+     */
+    private JSONObject processImageWithThumbnail(Uri uri, int desiredWidth, int desiredHeight, 
+                                                int quality, int outputType, boolean includeThumbnail,
+                                                int thumbnailWidth, int thumbnailHeight) {
+        try {
+            JSONObject result = new JSONObject();
+            
+            // Load original bitmap to get dimensions
+            BitmapFactory.Options options = new BitmapFactory.Options();
+            options.inJustDecodeBounds = true;
+            InputStream inputStream = contentResolver.openInputStream(uri);
+            BitmapFactory.decodeStream(inputStream, null, options);
+            inputStream.close();
+            
+            int originalWidth = options.outWidth;
+            int originalHeight = options.outHeight;
+            
+            // Process main image
+            Bitmap bitmap = loadBitmap(uri, desiredWidth, desiredHeight);
+            if (bitmap == null) {
+                Log.e(TAG, "Failed to load bitmap from URI: " + uri);
+                return null;
+            }
+            
+            // Correct orientation if needed
+            bitmap = correctOrientation(bitmap, uri);
+            
+            // Scale if needed
+            if (desiredWidth > 0 || desiredHeight > 0) {
+                bitmap = scaleBitmap(bitmap, desiredWidth, desiredHeight);
+            }
+            
+            // Get file information
+            String fileName = getDisplayName(uri);
+            long fileSize = getFileSize(uri);
+            String mimeType = getMimeType(uri);
+            
+            // Save or encode main image
+            String imagePath;
+            if (outputType == OUTPUT_TYPE_BASE64) {
+                imagePath = "data:image/jpeg;base64," + bitmapToBase64(bitmap, quality);
+            } else {
+                imagePath = saveBitmapToFile(bitmap, quality);
+            }
+            
+            // Build result object
+            result.put("originalPath", imagePath);
+            result.put("fileName", fileName != null ? fileName : "image.jpg");
+            result.put("fileSize", fileSize);
+            result.put("mimeType", mimeType != null ? mimeType : "image/jpeg");
+            result.put("width", originalWidth);
+            result.put("height", originalHeight);
+            
+            // Generate thumbnail if requested
+            if (includeThumbnail) {
+                Bitmap thumbnailBitmap = loadBitmap(uri, thumbnailWidth, thumbnailHeight);
+                if (thumbnailBitmap != null) {
+                    thumbnailBitmap = correctOrientation(thumbnailBitmap, uri);
+                    thumbnailBitmap = scaleBitmap(thumbnailBitmap, thumbnailWidth, thumbnailHeight);
+                    
+                    String thumbnailBase64 = bitmapToBase64(thumbnailBitmap, 80); // Use 80% quality for thumbnails
+                    result.put("thumbnail", "data:image/jpeg;base64," + thumbnailBase64);
+                    result.put("thumbnailWidth", thumbnailBitmap.getWidth());
+                    result.put("thumbnailHeight", thumbnailBitmap.getHeight());
+                    
+                    thumbnailBitmap.recycle();
+                }
+            }
+            
+            // Add content URI for Android
+            result.put("contentUri", uri.toString());
+            
+            return result;
+            
+        } catch (Exception e) {
+            Log.e(TAG, "Error processing image with thumbnail: " + uri, e);
+            return null;
+        }
+    }
+    
+    /**
+     * Get file size from URI
+     */
+    private long getFileSize(Uri uri) {
+        long size = 0;
+        
+        if ("content".equals(uri.getScheme())) {
+            Cursor cursor = contentResolver.query(uri, null, null, null, null);
+            if (cursor != null) {
+                if (cursor.moveToFirst()) {
+                    int sizeIndex = cursor.getColumnIndex(OpenableColumns.SIZE);
+                    if (sizeIndex >= 0) {
+                        size = cursor.getLong(sizeIndex);
+                    }
+                }
+                cursor.close();
+            }
+        } else if ("file".equals(uri.getScheme())) {
+            File file = new File(uri.getPath());
+            size = file.length();
+        }
+        
+        return size;
+    }
+    
+    /**
+     * Get MIME type from URI
+     */
+    private String getMimeType(Uri uri) {
+        return contentResolver.getType(uri);
     }
     
     /**

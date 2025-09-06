@@ -2,12 +2,12 @@
 <plugin xmlns="http://www.phonegap.com/ns/plugins/1.0"
   xmlns:android="http://schemas.android.com/apk/res/android"
   id="cordova-plugin-telerik-imagepicker"
-  version="2.3.5">
+  version="3.0.0">
 
     <name>ImagePicker</name>
 
     <description>
-        This plugin allows selection of multiple images from the camera roll / gallery in a phonegap app
+        Enhanced image picker with thumbnail support and rich metadata. Allows selection of multiple images from the camera roll / gallery with automatic thumbnail generation and detailed file information.
     </description>
 
     <license>MIT</license>

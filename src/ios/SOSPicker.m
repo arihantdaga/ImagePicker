@@ -79,6 +79,12 @@ typedef enum : NSUInteger {
     self.width = [[options objectForKey:@"width"] integerValue];
     self.height = [[options objectForKey:@"height"] integerValue];
     self.quality = [[options objectForKey:@"quality"] integerValue];
+    
+    // Thumbnail options
+    id includeThumbnailOption = [options objectForKey:@"includeThumbnail"];
+    self.includeThumbnail = includeThumbnailOption != nil ? [includeThumbnailOption boolValue] : YES;
+    self.thumbnailWidth = [[options objectForKey:@"thumbnailWidth"] integerValue] ?: 200;
+    self.thumbnailHeight = [[options objectForKey:@"thumbnailHeight"] integerValue] ?: 200;
 
     self.callbackId = command.callbackId;
     [self launchGMImagePicker:allow_video title:title message:message disable_popover:disable_popover maximumImagesCount:maximumImagesCount];
@@ -200,42 +206,125 @@ typedef enum : NSUInteger {
             filePath = [NSString stringWithFormat:@"%@/%@%03d.%@", docsPath, CDV_PHOTO_PREFIX, i++, @"jpg"];
         } while ([fileMgr fileExistsAtPath:filePath]);
 
-        NSData* data = nil;
-        if (self.width == 0 && self.height == 0) {
-            // no scaling required
-            if (self.outputType == BASE64_STRING){
-                UIImage* image = [UIImage imageNamed:item.image_fullsize];
-                [result_all addObject:[UIImageJPEGRepresentation(image, self.quality/100.0f) base64EncodedStringWithOptions:0]];
-            } else {
-                if (self.quality == 100) {
-                    // no scaling, no downsampling, this is the fastest option
-                    [result_all addObject:item.image_fullsize];
+        // Check if we should return enhanced metadata
+        if (self.includeThumbnail) {
+            // Create dictionary for enhanced result
+            NSMutableDictionary *imageResult = [[NSMutableDictionary alloc] init];
+            
+            UIImage* originalImage = [UIImage imageNamed:item.image_fullsize];
+            
+            // Get original dimensions
+            [imageResult setObject:[NSNumber numberWithInt:originalImage.size.width] forKey:@"width"];
+            [imageResult setObject:[NSNumber numberWithInt:originalImage.size.height] forKey:@"height"];
+            
+            // Get file info
+            NSString *fileName = [item.image_fullsize lastPathComponent];
+            [imageResult setObject:fileName ? fileName : @"image.jpg" forKey:@"fileName"];
+            [imageResult setObject:@"image/jpeg" forKey:@"mimeType"];
+            
+            // Process main image
+            NSData* data = nil;
+            NSString* imagePath = nil;
+            
+            if (self.width == 0 && self.height == 0) {
+                // no scaling required
+                if (self.outputType == BASE64_STRING){
+                    NSString *base64String = [UIImageJPEGRepresentation(originalImage, self.quality/100.0f) base64EncodedStringWithOptions:0];
+                    imagePath = [NSString stringWithFormat:@"data:image/jpeg;base64,%@", base64String];
                 } else {
-                    // resample first
-                    UIImage* image = [UIImage imageNamed:item.image_fullsize];
-                    data = UIImageJPEGRepresentation(image, self.quality/100.0f);
+                    if (self.quality == 100) {
+                        // no scaling, no downsampling
+                        imagePath = item.image_fullsize;
+                    } else {
+                        // resample first
+                        data = UIImageJPEGRepresentation(originalImage, self.quality/100.0f);
+                        if (![data writeToFile:filePath options:NSAtomicWrite error:&err]) {
+                            result = [CDVPluginResult resultWithStatus:CDVCommandStatus_IO_EXCEPTION messageAsString:[err localizedDescription]];
+                            break;
+                        } else {
+                            imagePath = [[NSURL fileURLWithPath:filePath] absoluteString];
+                        }
+                    }
+                }
+            } else {
+                // scale
+                UIImage* scaledImage = [self imageByScalingNotCroppingForSize:originalImage toSize:targetSize];
+                data = UIImageJPEGRepresentation(scaledImage, self.quality/100.0f);
+                
+                if (self.outputType == BASE64_STRING){
+                    NSString *base64String = [data base64EncodedStringWithOptions:0];
+                    imagePath = [NSString stringWithFormat:@"data:image/jpeg;base64,%@", base64String];
+                } else {
                     if (![data writeToFile:filePath options:NSAtomicWrite error:&err]) {
                         result = [CDVPluginResult resultWithStatus:CDVCommandStatus_IO_EXCEPTION messageAsString:[err localizedDescription]];
                         break;
                     } else {
-                        [result_all addObject:[[NSURL fileURLWithPath:filePath] absoluteString]];
+                        imagePath = [[NSURL fileURLWithPath:filePath] absoluteString];
                     }
                 }
             }
-        } else {
-            // scale
-            UIImage* image = [UIImage imageNamed:item.image_fullsize];
-            UIImage* scaledImage = [self imageByScalingNotCroppingForSize:image toSize:targetSize];
-            data = UIImageJPEGRepresentation(scaledImage, self.quality/100.0f);
-
-            if (![data writeToFile:filePath options:NSAtomicWrite error:&err]) {
-                result = [CDVPluginResult resultWithStatus:CDVCommandStatus_IO_EXCEPTION messageAsString:[err localizedDescription]];
-                break;
+            
+            [imageResult setObject:imagePath forKey:@"originalPath"];
+            
+            // Add file size
+            if (data != nil) {
+                [imageResult setObject:[NSNumber numberWithLong:data.length] forKey:@"fileSize"];
             } else {
-                if(self.outputType == BASE64_STRING){
-                    [result_all addObject:[data base64EncodedStringWithOptions:0]];
+                // Estimate file size from original
+                NSData *tempData = UIImageJPEGRepresentation(originalImage, self.quality/100.0f);
+                [imageResult setObject:[NSNumber numberWithLong:tempData.length] forKey:@"fileSize"];
+            }
+            
+            // Generate thumbnail
+            CGSize thumbnailSize = CGSizeMake(self.thumbnailWidth, self.thumbnailHeight);
+            UIImage* thumbnailImage = [self imageByScalingNotCroppingForSize:originalImage toSize:thumbnailSize];
+            NSData* thumbnailData = UIImageJPEGRepresentation(thumbnailImage, 0.8f);
+            NSString* thumbnailBase64 = [thumbnailData base64EncodedStringWithOptions:0];
+            [imageResult setObject:[NSString stringWithFormat:@"data:image/jpeg;base64,%@", thumbnailBase64] forKey:@"thumbnail"];
+            [imageResult setObject:[NSNumber numberWithInt:thumbnailImage.size.width] forKey:@"thumbnailWidth"];
+            [imageResult setObject:[NSNumber numberWithInt:thumbnailImage.size.height] forKey:@"thumbnailHeight"];
+            
+            [result_all addObject:imageResult];
+            
+        } else {
+            // Legacy mode - return simple string array
+            NSData* data = nil;
+            if (self.width == 0 && self.height == 0) {
+                // no scaling required
+                if (self.outputType == BASE64_STRING){
+                    UIImage* image = [UIImage imageNamed:item.image_fullsize];
+                    [result_all addObject:[UIImageJPEGRepresentation(image, self.quality/100.0f) base64EncodedStringWithOptions:0]];
                 } else {
-                    [result_all addObject:[[NSURL fileURLWithPath:filePath] absoluteString]];
+                    if (self.quality == 100) {
+                        // no scaling, no downsampling, this is the fastest option
+                        [result_all addObject:item.image_fullsize];
+                    } else {
+                        // resample first
+                        UIImage* image = [UIImage imageNamed:item.image_fullsize];
+                        data = UIImageJPEGRepresentation(image, self.quality/100.0f);
+                        if (![data writeToFile:filePath options:NSAtomicWrite error:&err]) {
+                            result = [CDVPluginResult resultWithStatus:CDVCommandStatus_IO_EXCEPTION messageAsString:[err localizedDescription]];
+                            break;
+                        } else {
+                            [result_all addObject:[[NSURL fileURLWithPath:filePath] absoluteString]];
+                        }
+                    }
+                }
+            } else {
+                // scale
+                UIImage* image = [UIImage imageNamed:item.image_fullsize];
+                UIImage* scaledImage = [self imageByScalingNotCroppingForSize:image toSize:targetSize];
+                data = UIImageJPEGRepresentation(scaledImage, self.quality/100.0f);
+
+                if (![data writeToFile:filePath options:NSAtomicWrite error:&err]) {
+                    result = [CDVPluginResult resultWithStatus:CDVCommandStatus_IO_EXCEPTION messageAsString:[err localizedDescription]];
+                    break;
+                } else {
+                    if(self.outputType == BASE64_STRING){
+                        [result_all addObject:[data base64EncodedStringWithOptions:0]];
+                    } else {
+                        [result_all addObject:[[NSURL fileURLWithPath:filePath] absoluteString]];
+                    }
                 }
             }
         }

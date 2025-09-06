@@ -23,5 +23,8 @@
 @property (nonatomic, assign) NSInteger height;
 @property (nonatomic, assign) NSInteger quality;
 @property (nonatomic, assign) NSInteger outputType;
+@property (nonatomic, assign) BOOL includeThumbnail;
+@property (nonatomic, assign) NSInteger thumbnailWidth;
+@property (nonatomic, assign) NSInteger thumbnailHeight;
 
 @end

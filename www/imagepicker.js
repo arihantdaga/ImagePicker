@@ -45,6 +45,9 @@ ImagePicker.prototype.requestReadPermission = function(callback, failureCallback
 *		.quality - quality of resized image, defaults to 100
 *       .outputType - type of output returned. defaults to file URIs.
 *					  Please see ImagePicker.OutputType for available values.
+*		.includeThumbnail - whether to include thumbnail data (default: true)
+*		.thumbnailWidth - width of thumbnail (default: 200)
+*		.thumbnailHeight - height of thumbnail (default: 200)
 */
 ImagePicker.prototype.getPictures = function(success, fail, options) {
 	if (!options) {
@@ -62,7 +65,10 @@ ImagePicker.prototype.getPictures = function(success, fail, options) {
 		title: options.title ? options.title : 'Select an Album', // the default is the message of the old plugin impl
 		message: options.message ? options.message : null, // the old plugin impl didn't have it, so passing null by default
 		outputType: options.outputType ? options.outputType : this.OutputType.FILE_URI,
-		disable_popover: options.disable_popover ? options.disable_popover : false // Disable the iOS popover as seen on iPad
+		disable_popover: options.disable_popover ? options.disable_popover : false, // Disable the iOS popover as seen on iPad
+		includeThumbnail: options.includeThumbnail !== false, // Default true for enhanced metadata
+		thumbnailWidth: options.thumbnailWidth ? options.thumbnailWidth : 200,
+		thumbnailHeight: options.thumbnailHeight ? options.thumbnailHeight : 200
 	};
 
 	return cordova.exec(success, fail, "ImagePicker", "getPictures", [params]);

@@ -43,6 +43,10 @@ import java.util.Map;
 import java.util.Map.Entry;
 import java.util.Set;
 
+import org.json.JSONArray;
+import org.json.JSONException;
+import org.json.JSONObject;
+
 import com.synconset.FakeR;
 import android.app.AlertDialog;
 import android.app.LoaderManager;
@@ -91,6 +95,9 @@ public class MultiImageChooserActivity extends AppCompatActivity implements
     public static final String HEIGHT_KEY = "HEIGHT";
     public static final String QUALITY_KEY = "QUALITY";
     public static final String OUTPUT_TYPE_KEY = "OUTPUT_TYPE";
+    public static final String INCLUDE_THUMBNAIL_KEY = "INCLUDE_THUMBNAIL";
+    public static final String THUMBNAIL_WIDTH_KEY = "THUMBNAIL_WIDTH";
+    public static final String THUMBNAIL_HEIGHT_KEY = "THUMBNAIL_HEIGHT";
 
     private ImageAdapter ia;
 
@@ -112,6 +119,9 @@ public class MultiImageChooserActivity extends AppCompatActivity implements
     private int desiredHeight;
     private int quality;
     private OutputType outputType;
+    private boolean includeThumbnail;
+    private int thumbnailWidth;
+    private int thumbnailHeight;
 
     private final ImageFetcher fetcher = new ImageFetcher();
 
@@ -137,6 +147,9 @@ public class MultiImageChooserActivity extends AppCompatActivity implements
         quality = getIntent().getIntExtra(QUALITY_KEY, 0);
         maxImageCount = maxImages;
         outputType = OutputType.fromValue(getIntent().getIntExtra(OUTPUT_TYPE_KEY, 0));
+        includeThumbnail = getIntent().getBooleanExtra(INCLUDE_THUMBNAIL_KEY, true);
+        thumbnailWidth = getIntent().getIntExtra(THUMBNAIL_WIDTH_KEY, 200);
+        thumbnailHeight = getIntent().getIntExtra(THUMBNAIL_HEIGHT_KEY, 200);
 
         Display display = getWindowManager().getDefaultDisplay();
         int width = display.getWidth();
@@ -505,13 +518,14 @@ public class MultiImageChooserActivity extends AppCompatActivity implements
         }
     }
 
-    private class ResizeImagesTask extends AsyncTask<Set<Entry<String, Integer>>, Void, ArrayList<String>> {
+    private class ResizeImagesTask extends AsyncTask<Set<Entry<String, Integer>>, Void, JSONArray> {
         private Exception asyncTaskError = null;
 
         @Override
-        protected ArrayList<String> doInBackground(Set<Entry<String, Integer>>... fileSets) {
+        protected JSONArray doInBackground(Set<Entry<String, Integer>>... fileSets) {
             Set<Entry<String, Integer>> fileNames = fileSets[0];
             ArrayList<String> al = new ArrayList<String>();
+            JSONArray jsonResults = new JSONArray();
             try {
                 Iterator<Entry<String, Integer>> i = fileNames.iterator();
                 Bitmap bmp;
@@ -566,15 +580,67 @@ public class MultiImageChooserActivity extends AppCompatActivity implements
                         }
                     }
 
-                    if (outputType == OutputType.FILE_URI) {
-                        file = storeImage(bmp, file.getName());
-                        al.add(Uri.fromFile(file).toString());
-
-                    } else if (outputType == OutputType.BASE64_STRING) {
-                        al.add(getBase64OfImage(bmp));
+                    // Create JSON object for enhanced format
+                    if (includeThumbnail) {
+                        try {
+                            JSONObject imageData = new JSONObject();
+                            
+                            // Store main image
+                            String imagePath;
+                            if (outputType == OutputType.FILE_URI) {
+                                file = storeImage(bmp, file.getName());
+                                imagePath = Uri.fromFile(file).toString();
+                            } else {
+                                imagePath = "data:image/jpeg;base64," + getBase64OfImage(bmp);
+                            }
+                            
+                            imageData.put("originalPath", imagePath);
+                            imageData.put("fileName", file.getName());
+                            imageData.put("fileSize", file.length());
+                            imageData.put("mimeType", "image/jpeg");
+                            imageData.put("width", bmp.getWidth());
+                            imageData.put("height", bmp.getHeight());
+                            
+                            // Generate thumbnail
+                            Bitmap thumbnail = Bitmap.createScaledBitmap(bmp, thumbnailWidth, thumbnailHeight, true);
+                            String thumbnailBase64 = getBase64OfImage(thumbnail);
+                            imageData.put("thumbnail", "data:image/jpeg;base64," + thumbnailBase64);
+                            imageData.put("thumbnailWidth", thumbnail.getWidth());
+                            imageData.put("thumbnailHeight", thumbnail.getHeight());
+                            thumbnail.recycle();
+                            
+                            jsonResults.put(imageData);
+                        } catch (JSONException e) {
+                            // Fall back to simple string format
+                            if (outputType == OutputType.FILE_URI) {
+                                file = storeImage(bmp, file.getName());
+                                al.add(Uri.fromFile(file).toString());
+                            } else {
+                                al.add(getBase64OfImage(bmp));
+                            }
+                        }
+                    } else {
+                        // Legacy format - simple strings
+                        if (outputType == OutputType.FILE_URI) {
+                            file = storeImage(bmp, file.getName());
+                            al.add(Uri.fromFile(file).toString());
+                        } else if (outputType == OutputType.BASE64_STRING) {
+                            al.add(getBase64OfImage(bmp));
+                        }
                     }
                 }
-                return al;
+                
+                // Return appropriate format
+                if (includeThumbnail && jsonResults.length() > 0) {
+                    return jsonResults;
+                } else {
+                    // Convert ArrayList to JSONArray for consistency
+                    JSONArray legacyResults = new JSONArray();
+                    for (String path : al) {
+                        legacyResults.put(path);
+                    }
+                    return legacyResults;
+                }
             } catch (IOException e) {
                 try {
                     asyncTaskError = e;
@@ -586,12 +652,12 @@ public class MultiImageChooserActivity extends AppCompatActivity implements
                 } catch (Exception ignore) {
                 }
 
-                return new ArrayList<String>();
+                return new JSONArray();
             }
         }
 
         @Override
-        protected void onPostExecute(ArrayList<String> al) {
+        protected void onPostExecute(JSONArray results) {
             Intent data = new Intent();
 
             if (asyncTaskError != null) {
@@ -600,9 +666,31 @@ public class MultiImageChooserActivity extends AppCompatActivity implements
                 data.putExtras(res);
                 setResult(RESULT_CANCELED, data);
 
-            } else if (al.size() > 0) {
+            } else if (results.length() > 0) {
                 Bundle res = new Bundle();
-                res.putStringArrayList("MULTIPLEFILENAMES", al);
+                
+                // Check if we have enhanced format (JSON objects) or legacy format (strings)
+                ArrayList<String> stringResults = new ArrayList<String>();
+                boolean isEnhanced = false;
+                
+                try {
+                    // Check first element to determine format
+                    Object firstItem = results.get(0);
+                    if (firstItem instanceof JSONObject) {
+                        isEnhanced = true;
+                        // For enhanced format, convert entire JSONArray to string
+                        res.putString("ENHANCED_RESULTS", results.toString());
+                    } else {
+                        // Legacy format - extract strings
+                        for (int i = 0; i < results.length(); i++) {
+                            stringResults.add(results.getString(i));
+                        }
+                        res.putStringArrayList("MULTIPLEFILENAMES", stringResults);
+                    }
+                } catch (JSONException e) {
+                    // Fall back to legacy format
+                    res.putStringArrayList("MULTIPLEFILENAMES", stringResults);
+                }
 
                 if (imagecursor != null) {
                     res.putInt("TOTALFILES", imagecursor.getCount());

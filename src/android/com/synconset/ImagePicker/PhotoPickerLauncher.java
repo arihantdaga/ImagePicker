@@ -192,9 +192,24 @@ public class PhotoPickerLauncher {
             int quality = options.optInt("quality", 100);
             int outputType = options.optInt("outputType", 0); // 0 = FILE_URI, 1 = BASE64
             
-            // Process images using PhotoPickerUtils
+            // Get thumbnail options
+            boolean includeThumbnail = options.optBoolean("includeThumbnail", true);
+            int thumbnailWidth = options.optInt("thumbnailWidth", 200);
+            int thumbnailHeight = options.optInt("thumbnailHeight", 200);
+            
+            // Process images using PhotoPickerUtils with enhanced metadata
             PhotoPickerUtils utils = new PhotoPickerUtils(cordova.getActivity());
-            JSONArray results = utils.processImages(uris, desiredWidth, desiredHeight, quality, outputType);
+            JSONArray results;
+            
+            if (includeThumbnail) {
+                // Use enhanced processing with thumbnails
+                results = utils.processImagesWithThumbnails(uris, desiredWidth, desiredHeight, 
+                                                           quality, outputType, includeThumbnail,
+                                                           thumbnailWidth, thumbnailHeight);
+            } else {
+                // Use standard processing for backward compatibility
+                results = utils.processImages(uris, desiredWidth, desiredHeight, quality, outputType);
+            }
             
             // Return results
             callbackContext.success(results);

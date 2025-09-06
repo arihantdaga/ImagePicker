@@ -82,6 +82,10 @@ public class ImagePicker extends CordovaPlugin {
             int desiredHeight = 0;
             int quality = 100;
             int outputType = 0;
+            boolean includeThumbnail = true;
+            int thumbnailWidth = 200;
+            int thumbnailHeight = 200;
+            
             if (params.has("maximumImagesCount")) {
                 max = params.getInt("maximumImagesCount");
             }
@@ -97,12 +101,24 @@ public class ImagePicker extends CordovaPlugin {
             if (params.has("outputType")) {
                 outputType = params.getInt("outputType");
             }
+            if (params.has("includeThumbnail")) {
+                includeThumbnail = params.getBoolean("includeThumbnail");
+            }
+            if (params.has("thumbnailWidth")) {
+                thumbnailWidth = params.getInt("thumbnailWidth");
+            }
+            if (params.has("thumbnailHeight")) {
+                thumbnailHeight = params.getInt("thumbnailHeight");
+            }
 
             imagePickerIntent.putExtra("MAX_IMAGES", max);
             imagePickerIntent.putExtra("WIDTH", desiredWidth);
             imagePickerIntent.putExtra("HEIGHT", desiredHeight);
             imagePickerIntent.putExtra("QUALITY", quality);
             imagePickerIntent.putExtra("OUTPUT_TYPE", outputType);
+            imagePickerIntent.putExtra("INCLUDE_THUMBNAIL", includeThumbnail);
+            imagePickerIntent.putExtra("THUMBNAIL_WIDTH", thumbnailWidth);
+            imagePickerIntent.putExtra("THUMBNAIL_HEIGHT", thumbnailHeight);
 
             // Check permissions for legacy picker
             if (cordova != null) {
@@ -182,10 +198,25 @@ public class ImagePicker extends CordovaPlugin {
             int sync = data.getIntExtra("bigdata:synccode", -1);
             final Bundle bigData = ResultIPC.get().getLargeData(sync);
 
-            ArrayList<String> fileNames = bigData.getStringArrayList("MULTIPLEFILENAMES");
-
-            JSONArray res = new JSONArray(fileNames);
-            callbackContext.success(res);
+            // Check for enhanced results first
+            String enhancedResults = bigData.getString("ENHANCED_RESULTS");
+            if (enhancedResults != null) {
+                try {
+                    // Parse the JSON array string
+                    JSONArray res = new JSONArray(enhancedResults);
+                    callbackContext.success(res);
+                } catch (JSONException e) {
+                    // Fall back to legacy format
+                    ArrayList<String> fileNames = bigData.getStringArrayList("MULTIPLEFILENAMES");
+                    JSONArray res = new JSONArray(fileNames);
+                    callbackContext.success(res);
+                }
+            } else {
+                // Legacy format
+                ArrayList<String> fileNames = bigData.getStringArrayList("MULTIPLEFILENAMES");
+                JSONArray res = new JSONArray(fileNames);
+                callbackContext.success(res);
+            }
 
         } else if (resultCode == Activity.RESULT_CANCELED && data != null) {
             String error = data.getStringExtra("ERRORMESSAGE");
