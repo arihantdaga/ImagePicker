@@ -22,10 +22,8 @@ import android.os.Build;
 import android.os.Bundle;
 
 import androidx.core.app.ActivityCompat;
-//import android.support.v4.app.ActivityCompat;
-//import android.support.v4.content.ContextCompat;
-import androidx.core.app.ActivityCompat;
 import androidx.core.content.ContextCompat;
+import androidx.activity.ComponentActivity;
 
 public class ImagePicker extends CordovaPlugin {
 
@@ -37,7 +35,24 @@ public class ImagePicker extends CordovaPlugin {
 
     private CallbackContext callbackContext;
     private Intent imagePickerIntent;
+    private PhotoPickerLauncher photoPickerLauncher;
+    private JSONObject pendingOptions;
 
+
+    @Override
+    protected void pluginInitialize() {
+        super.pluginInitialize();
+        // Initialize Photo Picker launcher if available
+        try {
+            if (cordova.getActivity() instanceof ComponentActivity) {
+                photoPickerLauncher = new PhotoPickerLauncher(cordova, this);
+            }
+        } catch (Exception e) {
+            // Failed to initialize Photo Picker, will use legacy picker
+            android.util.Log.e("ImagePicker", "Failed to initialize PhotoPickerLauncher: " + e.getMessage());
+            photoPickerLauncher = null;
+        }
+    }
 
     public boolean execute(String action, final JSONArray args, final CallbackContext callbackContext) throws JSONException {
         this.callbackContext = callbackContext;
@@ -51,6 +66,16 @@ public class ImagePicker extends CordovaPlugin {
 
         } else if (ACTION_GET_PICTURES.equals(action)) {
             final JSONObject params = args.getJSONObject(0);
+            this.pendingOptions = params;
+            
+            // Check if Photo Picker is available and use it
+            if (PhotoPickerLauncher.isPhotoPickerAvailable() && photoPickerLauncher != null) {
+                // Use Photo Picker - no permissions needed!
+                photoPickerLauncher.launch(params, callbackContext);
+                return true;
+            }
+            
+            // Fall back to legacy implementation
             this.imagePickerIntent = new Intent(cordova.getActivity(), MultiImageChooserActivity.class);
             int max = 20;
             int desiredWidth = 0;
@@ -79,12 +104,11 @@ public class ImagePicker extends CordovaPlugin {
             imagePickerIntent.putExtra("QUALITY", quality);
             imagePickerIntent.putExtra("OUTPUT_TYPE", outputType);
 
-            // some day, when everybody uses a cordova version supporting 'hasPermission', enable this:
+            // Check permissions for legacy picker
             if (cordova != null) {
                  if (cordova.hasPermission(Manifest.permission.READ_EXTERNAL_STORAGE)) {
                     cordova.startActivityForResult(this, imagePickerIntent, 0);
                  } else {
-//                     permissionsCallback = callbackContext;
                      cordova.requestPermission(
                              this,
                              PERMISSION_REQUEST_CODE,
@@ -92,16 +116,6 @@ public class ImagePicker extends CordovaPlugin {
                      );
                  }
              }
-            // .. until then use:
-            /*if (hasReadPermission()) {
-                cordova.startActivityForResult(this, imagePickerIntent, 0);
-            } else {
-                requestReadPermission();
-                // The downside is the user needs to re-invoke this picker method.
-                // The best thing to do for the dev is check 'hasReadPermission' manually and
-                // run 'requestReadPermission' or 'getPictures' based on the outcome.
-            }
-            */
             return true;
         }
         return false;
