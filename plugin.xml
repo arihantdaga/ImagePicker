@@ -104,16 +104,6 @@
         <config-file target="AndroidManifest.xml" parent="/manifest/application">
             <activity android:label="@string/multi_app_name" android:name="com.synconset.MultiImageChooserActivity" android:theme="@style/Theme.AppCompat.Light">
             </activity>
-            
-            <!-- Photo Picker backport support for Android 4.4-12 -->
-            <service android:name="com.google.android.gms.metadata.ModuleDependencies"
-                android:enabled="false"
-                android:exported="false">
-                <intent-filter>
-                    <action android:name="com.google.android.gms.metadata.MODULE_DEPENDENCIES" />
-                </intent-filter>
-                <meta-data android:name="photopicker_activity:0:required" android:value="" />
-            </service>
         </config-file>
 
         <config-file target="AndroidManifest.xml" parent="/*">
@@ -121,16 +111,12 @@
             <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
         </config-file>
 
-        <!-- AndroidX dependencies for Photo Picker and backward compatibility -->
-        <framework src="androidx.activity:activity:1.7.2" />
-        <framework src="androidx.activity:activity-ktx:1.7.2" />
+        <!-- AndroidX dependencies for backward compatibility -->
         <framework src="androidx.appcompat:appcompat:1.6.1" />
 
         <source-file src="src/android/com/synconset/ImagePicker/ImagePicker.java" target-dir="src/com/synconset" />
         <source-file src="src/android/com/synconset/ImagePicker/FakeR.java" target-dir="src/com/synconset" />
         <source-file src="src/android/com/synconset/ImagePicker/ResultIPC.java" target-dir="src/com/synconset" />
-        <source-file src="src/android/com/synconset/ImagePicker/PhotoPickerLauncher.java" target-dir="src/com/synconset" />
-        <source-file src="src/android/com/synconset/ImagePicker/PhotoPickerUtils.java" target-dir="src/com/synconset" />
 
         <source-file src="src/android/Library/src/ImageFetcher.java" target-dir="src/com/synconset"/>
         <source-file src="src/android/Library/src/MultiImageChooserActivity.java" target-dir="src/com/synconset"/>
