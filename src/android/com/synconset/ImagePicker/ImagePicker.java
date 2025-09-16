@@ -69,69 +69,23 @@ public class ImagePicker extends CordovaPlugin {
             this.pendingOptions = params;
             
             // Check if Photo Picker is available and use it
+            android.util.Log.d("ImagePicker", "Photo Picker available: " + PhotoPickerLauncher.isPhotoPickerAvailable() + ", launcher: " + (photoPickerLauncher != null));
             if (PhotoPickerLauncher.isPhotoPickerAvailable() && photoPickerLauncher != null) {
-                // Use Photo Picker - no permissions needed!
-                photoPickerLauncher.launch(params, callbackContext);
-                return true;
+                // Try to use Photo Picker
+                android.util.Log.d("ImagePicker", "Attempting to launch Photo Picker");
+                boolean launched = photoPickerLauncher.launch(params, callbackContext);
+                if (launched) {
+                    android.util.Log.d("ImagePicker", "Photo Picker launched successfully");
+                    return true;
+                }
+                // If not launched, fall through to legacy picker
+                android.util.Log.w("ImagePicker", "Photo Picker could not be launched, falling back to legacy picker");
+            } else {
+                android.util.Log.d("ImagePicker", "Using legacy picker directly");
             }
             
             // Fall back to legacy implementation
-            this.imagePickerIntent = new Intent(cordova.getActivity(), MultiImageChooserActivity.class);
-            int max = 20;
-            int desiredWidth = 0;
-            int desiredHeight = 0;
-            int quality = 100;
-            int outputType = 0;
-            boolean includeThumbnail = true;
-            int thumbnailWidth = 200;
-            int thumbnailHeight = 200;
-            
-            if (params.has("maximumImagesCount")) {
-                max = params.getInt("maximumImagesCount");
-            }
-            if (params.has("width")) {
-                desiredWidth = params.getInt("width");
-            }
-            if (params.has("height")) {
-                desiredHeight = params.getInt("height");
-            }
-            if (params.has("quality")) {
-                quality = params.getInt("quality");
-            }
-            if (params.has("outputType")) {
-                outputType = params.getInt("outputType");
-            }
-            if (params.has("includeThumbnail")) {
-                includeThumbnail = params.getBoolean("includeThumbnail");
-            }
-            if (params.has("thumbnailWidth")) {
-                thumbnailWidth = params.getInt("thumbnailWidth");
-            }
-            if (params.has("thumbnailHeight")) {
-                thumbnailHeight = params.getInt("thumbnailHeight");
-            }
-
-            imagePickerIntent.putExtra("MAX_IMAGES", max);
-            imagePickerIntent.putExtra("WIDTH", desiredWidth);
-            imagePickerIntent.putExtra("HEIGHT", desiredHeight);
-            imagePickerIntent.putExtra("QUALITY", quality);
-            imagePickerIntent.putExtra("OUTPUT_TYPE", outputType);
-            imagePickerIntent.putExtra("INCLUDE_THUMBNAIL", includeThumbnail);
-            imagePickerIntent.putExtra("THUMBNAIL_WIDTH", thumbnailWidth);
-            imagePickerIntent.putExtra("THUMBNAIL_HEIGHT", thumbnailHeight);
-
-            // Check permissions for legacy picker
-            if (cordova != null) {
-                 if (cordova.hasPermission(Manifest.permission.READ_EXTERNAL_STORAGE)) {
-                    cordova.startActivityForResult(this, imagePickerIntent, 0);
-                 } else {
-                     cordova.requestPermission(
-                             this,
-                             PERMISSION_REQUEST_CODE,
-                             Manifest.permission.READ_EXTERNAL_STORAGE
-                     );
-                 }
-             }
+            launchLegacyPicker(params);
             return true;
         }
         return false;
@@ -253,6 +207,75 @@ public class ImagePicker extends CordovaPlugin {
         } else {
             // Tell the JS layer that something went wrong...
             callbackContext.error("Permission denied");
+        }
+    }
+    
+    /**
+     * Launch the legacy image picker
+     */
+    @SuppressLint("InlinedApi")
+    private void launchLegacyPicker(JSONObject params) throws JSONException {
+        this.imagePickerIntent = new Intent(cordova.getActivity(), MultiImageChooserActivity.class);
+        int max = 20;
+        int desiredWidth = 0;
+        int desiredHeight = 0;
+        int quality = 100;
+        int outputType = 0;
+        boolean includeThumbnail = true;
+        int thumbnailWidth = 200;
+        int thumbnailHeight = 200;
+        
+        if (params.has("maximumImagesCount")) {
+            max = params.getInt("maximumImagesCount");
+        }
+        if (params.has("width")) {
+            desiredWidth = params.getInt("width");
+        }
+        if (params.has("height")) {
+            desiredHeight = params.getInt("height");
+        }
+        if (params.has("quality")) {
+            quality = params.getInt("quality");
+        }
+        if (params.has("outputType")) {
+            outputType = params.getInt("outputType");
+        }
+        if (params.has("includeThumbnail")) {
+            includeThumbnail = params.getBoolean("includeThumbnail");
+        }
+        if (params.has("thumbnailWidth")) {
+            thumbnailWidth = params.getInt("thumbnailWidth");
+        }
+        if (params.has("thumbnailHeight")) {
+            thumbnailHeight = params.getInt("thumbnailHeight");
+        }
+
+        imagePickerIntent.putExtra("MAX_IMAGES", max);
+        imagePickerIntent.putExtra("WIDTH", desiredWidth);
+        imagePickerIntent.putExtra("HEIGHT", desiredHeight);
+        imagePickerIntent.putExtra("QUALITY", quality);
+        imagePickerIntent.putExtra("OUTPUT_TYPE", outputType);
+        imagePickerIntent.putExtra("INCLUDE_THUMBNAIL", includeThumbnail);
+        imagePickerIntent.putExtra("THUMBNAIL_WIDTH", thumbnailWidth);
+        imagePickerIntent.putExtra("THUMBNAIL_HEIGHT", thumbnailHeight);
+
+        // Determine which permission to check based on Android version
+        String readImagePermission = Manifest.permission.READ_EXTERNAL_STORAGE;
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            readImagePermission = Manifest.permission.READ_MEDIA_IMAGES;
+        }
+        
+        // Check permissions for legacy picker
+        if (cordova != null) {
+            if (hasReadPermission()) {
+                cordova.startActivityForResult(this, imagePickerIntent, 0);
+            } else {
+                cordova.requestPermission(
+                        this,
+                        PERMISSION_REQUEST_CODE,
+                        readImagePermission
+                );
+            }
         }
     }
 

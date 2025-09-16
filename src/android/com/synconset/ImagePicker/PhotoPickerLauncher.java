@@ -33,16 +33,14 @@ public class PhotoPickerLauncher {
     private ActivityResultLauncher<PickVisualMediaRequest> singlePickerLauncher;
     private ActivityResultLauncher<PickVisualMediaRequest> multiplePickerLauncher;
     private static final int MAX_SELECTION_COUNT = 100; // Maximum images that can be selected
+    private boolean launchersInitialized = false;
+    private boolean initializationAttempted = false;
     
     public PhotoPickerLauncher(CordovaInterface cordova, CordovaPlugin plugin) {
         this.cordova = cordova;
         this.plugin = plugin;
-        
-        // Initialize launchers if activity is ComponentActivity
-        Activity activity = cordova.getActivity();
-        if (activity instanceof ComponentActivity) {
-            initializeLaunchers((ComponentActivity) activity);
-        }
+        // Don't initialize launchers in constructor to avoid lifecycle issues
+        // They will be initialized lazily when first needed
     }
     
     /**
@@ -67,11 +65,30 @@ public class PhotoPickerLauncher {
     
     /**
      * Initialize the activity result launchers
+     * Returns true if successful, false otherwise
      */
-    private void initializeLaunchers(ComponentActivity activity) {
+    private boolean initializeLaunchers() {
+        // Only attempt once
+        if (initializationAttempted) {
+            return launchersInitialized;
+        }
+        
+        initializationAttempted = true;
+        
+        Activity activity = cordova.getActivity();
+        if (!(activity instanceof ComponentActivity)) {
+            Log.w(TAG, "Activity is not ComponentActivity, cannot use Photo Picker");
+            return false;
+        }
+        
+        ComponentActivity componentActivity = (ComponentActivity) activity;
+        
         try {
+            // Check if we can still register (activity must not be started)
+            // This is a workaround - we try to register and catch the exception if too late
+            
             // Single image picker
-            singlePickerLauncher = activity.registerForActivityResult(
+            singlePickerLauncher = componentActivity.registerForActivityResult(
                 new ActivityResultContracts.PickVisualMedia(),
                 new ActivityResultCallback<Uri>() {
                     @Override
@@ -82,7 +99,7 @@ public class PhotoPickerLauncher {
             );
             
             // Multiple image picker - pre-register with max count
-            multiplePickerLauncher = activity.registerForActivityResult(
+            multiplePickerLauncher = componentActivity.registerForActivityResult(
                 new ActivityResultContracts.PickMultipleVisualMedia(MAX_SELECTION_COUNT),
                 new ActivityResultCallback<List<Uri>>() {
                     @Override
@@ -91,20 +108,52 @@ public class PhotoPickerLauncher {
                     }
                 }
             );
-        } catch (Exception e) {
-            Log.e(TAG, "Error initializing launchers: " + e.getMessage(), e);
-            // Launchers couldn't be initialized, will fall back to legacy picker
+            
+            launchersInitialized = true;
+            Log.d(TAG, "Photo Picker launchers initialized successfully");
+            return true;
+            
+        } catch (IllegalStateException e) {
+            // Activity is already started, cannot register launchers
+            Log.w(TAG, "Cannot register launchers - activity already started. Will use fallback.", e);
             singlePickerLauncher = null;
             multiplePickerLauncher = null;
+            launchersInitialized = false;
+            return false;
+        } catch (Exception e) {
+            Log.e(TAG, "Error initializing launchers: " + e.getMessage(), e);
+            singlePickerLauncher = null;
+            multiplePickerLauncher = null;
+            launchersInitialized = false;
+            return false;
         }
     }
     
     /**
-     * Launch the Photo Picker
+     * Check if launchers are available and try to initialize if not
      */
-    public void launch(JSONObject params, CallbackContext callback) {
+    private boolean ensureLaunchersReady() {
+        if (launchersInitialized) {
+            return true;
+        }
+        
+        // Try to initialize launchers
+        return initializeLaunchers();
+    }
+    
+    /**
+     * Launch the Photo Picker
+     * Returns true if launcher was successfully started, false if it couldn't be initialized
+     */
+    public boolean launch(JSONObject params, CallbackContext callback) {
         this.options = params;
         this.callbackContext = callback;
+        
+        // First check if we can initialize the launchers
+        if (!ensureLaunchersReady()) {
+            Log.w(TAG, "Photo Picker launchers could not be initialized");
+            return false;
+        }
         
         try {
             int maxImages = params.optInt("maximumImagesCount", 15);
@@ -116,9 +165,12 @@ public class PhotoPickerLauncher {
                 }
             });
             
+            return true;
+            
         } catch (Exception e) {
             Log.e(TAG, "Error launching Photo Picker", e);
             callback.error("Failed to launch Photo Picker: " + e.getMessage());
+            return false;
         }
     }
     
@@ -126,10 +178,10 @@ public class PhotoPickerLauncher {
      * Launch the appropriate picker based on max images
      */
     private void launchPicker(int maxImages) {
-        // Check if launchers were initialized properly
+        // Launchers should already be ready (checked in launch method)
         if (singlePickerLauncher == null || multiplePickerLauncher == null) {
-            Log.e(TAG, "Photo Picker launchers not initialized. Falling back to legacy picker.");
-            callbackContext.error("Photo Picker not available. Please use the legacy picker.");
+            Log.e(TAG, "Launchers are null when they shouldn't be");
+            callbackContext.error("Photo Picker initialization error");
             return;
         }
         
