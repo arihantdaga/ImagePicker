@@ -435,7 +435,6 @@ public class MultiImageChooserActivity extends AppCompatActivity implements
         return checkStatus.get(position);
     }
 
-
     /*********************
     * Nested Classes
     ********************/
